@@ -1,0 +1,307 @@
+@model GameIdle.Models.GameViewModel
+
+@{
+    ViewData["Title"] = "GameIdle";
+}
+
+<h1>GameIdle</h1>
+
+<style>
+  .planet-card {
+    border: 1px solid #ddd;
+    border-radius: 14px;
+    padding: 14px;
+    margin-top: 12px;
+  }
+
+  .btn {
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid #ccc;
+    cursor: pointer;
+    margin-right: 8px;
+    margin-top: 8px;
+  }
+
+  .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .can-buy {
+    background-color: #16a34a;
+    color: white;
+    border-color: #16a34a;
+  }
+
+  .cannot-buy {
+    background-color: #e5e7eb;
+    color: #111827;
+  }
+
+  .muted {
+    opacity: 0.75;
+  }
+
+  .row {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+</style>
+
+<div style="font-size: 1.2rem; line-height: 1.8;">
+  <div>
+    <strong>Credits:</strong>
+    <span id="credits">@Model.Credits</span>
+  </div>
+  <div>
+    <strong>Total Production / sec:</strong>
+    <span id="totalPps">@Model.TotalProductionPerSecond</span>
+  </div>
+</div>
+
+@if (Model.ShowOfflinePopup)
+{
+  <div id="offlineModal" style="
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9999;">
+    <div style="
+        background: white; border-radius: 14px; padding: 18px; width: 420px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+      <h3 style="margin-top: 0;">Offline-Einnahmen</h3>
+
+      <div style="line-height: 1.7;">
+        <div>
+          <strong>Offline-Zeit:</strong>
+          <span id="offlineTimeFmt"></span>
+        </div>
+        <div><strong>Verdient:</strong> <span id="offlineEarn">@Model.OfflineEarnings</span> Credits</div>
+      </div>
+
+      <button id="closeOfflineModal" type="button" class="btn can-buy" style="margin-top: 14px;">
+        OK
+      </button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const modal = document.getElementById("offlineModal");
+      const btn = document.getElementById("closeOfflineModal");
+
+      // Format seconds to hh:mm:ss
+      const seconds = Number("@Model.OfflineSeconds");
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      const fmt = String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+
+      const fmtEl = document.getElementById("offlineTimeFmt");
+      if (fmtEl) fmtEl.textContent = fmt;
+
+      if (btn && modal) {
+        btn.addEventListener("click", () => modal.style.display = "none");
+      }
+    })();
+  </script>
+}
+
+@foreach (var p in Model.Planets)
+{
+  <div class="planet-card">
+    <div class="row">
+      <h3 style="margin:0;">@p.Name</h3>
+
+      @if (!p.IsUnlocked)
+      {
+        <span class="muted">
+          Locked — Price:
+          <span class="planetPrice" data-planet="@p.PlanetId">@p.UnlockPriceCredits</span>
+        </span>
+
+        <form asp-action="BuyPlanet" method="post" style="display:inline;">
+          @Html.AntiForgeryToken()
+          <input type="hidden" name="planetId" value="@p.PlanetId" />
+          <button id="buy-@p.PlanetId" class="btn" type="submit">Buy</button>
+        </form>
+      }
+      else
+      {
+        <span>
+          <strong>Level:</strong>
+          <span id="lvl-@p.PlanetId">@p.MineLevel</span>
+        </span>
+
+        <span>
+          <strong>PPS:</strong>
+          <span class="pps" data-planet="@p.PlanetId">@p.ProductionPerSecond</span>
+        </span>
+      }
+    </div>
+
+    @if (p.IsUnlocked)
+    {
+      <div class="muted" style="margin-top:6px;">
+        Upgrade costs:
+        x1=<span class="c1text" data-planet="@p.PlanetId">@p.UpgradeCost1</span>,
+        x5=<span class="c5text" data-planet="@p.PlanetId">@p.UpgradeCost5</span>,
+        x10=<span class="c10text" data-planet="@p.PlanetId">@p.UpgradeCost10</span>
+      </div>
+
+      <div style="margin-top: 10px;">
+        <form asp-action="UpgradeMine" method="post" style="display:inline;">
+          @Html.AntiForgeryToken()
+          <input type="hidden" name="planetId" value="@p.PlanetId" />
+          <input type="hidden" name="count" value="1" />
+          <button id="u1-@p.PlanetId" class="btn" type="submit">Upgrade x1</button>
+        </form>
+
+        <form asp-action="UpgradeMine" method="post" style="display:inline;">
+          @Html.AntiForgeryToken()
+          <input type="hidden" name="planetId" value="@p.PlanetId" />
+          <input type="hidden" name="count" value="5" />
+          <button id="u5-@p.PlanetId" class="btn" type="submit">Upgrade x5</button>
+        </form>
+
+        <form asp-action="UpgradeMine" method="post" style="display:inline;">
+          @Html.AntiForgeryToken()
+          <input type="hidden" name="planetId" value="@p.PlanetId" />
+          <input type="hidden" name="count" value="10" />
+          <button id="u10-@p.PlanetId" class="btn" type="submit">Upgrade x10</button>
+        </form>
+      </div>
+
+      <!-- Hidden inputs for JS -->
+      <input type="hidden" class="cost1" data-planet="@p.PlanetId" value="@p.UpgradeCost1" />
+      <input type="hidden" class="cost5" data-planet="@p.PlanetId" value="@p.UpgradeCost5" />
+      <input type="hidden" class="cost10" data-planet="@p.PlanetId" value="@p.UpgradeCost10" />
+    }
+  </div>
+}
+
+<script>
+  (function () {
+    // Baseline (will be corrected by AutoSync)
+    let startCredits = Number("@Model.StartCredits");
+    let totalPps = Number("@Model.TotalProductionPerSecond");
+    let clientStartMs = Date.now();
+
+    const creditsEl = document.getElementById("credits");
+    const totalPpsEl = document.getElementById("totalPps");
+
+    function setBtn(btn, canBuy) {
+      if (!btn) return;
+      btn.disabled = !canBuy;
+      btn.classList.remove("can-buy", "cannot-buy");
+      btn.classList.add(canBuy ? "can-buy" : "cannot-buy");
+    }
+
+    function getCurrentCredits() {
+      const elapsedSeconds = Math.floor((Date.now() - clientStartMs) / 1000);
+      return startCredits + (elapsedSeconds * totalPps);
+    }
+
+    function updateButtonsWithCredits(currentCredits) {
+      // Buy buttons
+      document.querySelectorAll(".planetPrice").forEach(priceEl => {
+        const planetId = priceEl.dataset.planet;
+        const price = Number(priceEl.textContent);
+        const buyBtn = document.getElementById("buy-" + planetId);
+        if (buyBtn) setBtn(buyBtn, currentCredits >= price);
+      });
+
+      // Upgrade buttons
+      document.querySelectorAll(".cost1").forEach(input => {
+        const planetId = input.dataset.planet;
+
+        const c1El = document.querySelector('.cost1[data-planet="' + planetId + '"]');
+        const c5El = document.querySelector('.cost5[data-planet="' + planetId + '"]');
+        const c10El = document.querySelector('.cost10[data-planet="' + planetId + '"]');
+
+        if (!c1El || !c5El || !c10El) return;
+
+        const c1 = Number(c1El.value);
+        const c5 = Number(c5El.value);
+        const c10 = Number(c10El.value);
+
+        setBtn(document.getElementById("u1-" + planetId), currentCredits >= c1);
+        setBtn(document.getElementById("u5-" + planetId), currentCredits >= c5);
+        setBtn(document.getElementById("u10-" + planetId), currentCredits >= c10);
+      });
+    }
+
+    function renderTick() {
+      const currentCredits = getCurrentCredits();
+      creditsEl.textContent = currentCredits.toString();
+      totalPpsEl.textContent = totalPps.toString();
+      updateButtonsWithCredits(currentCredits);
+    }
+
+    // Local tick every second
+    renderTick();
+    setInterval(renderTick, 1000);
+
+    // --- AutoSync every 15 seconds ---
+    async function autoSync() {
+      try {
+        const res = await fetch("/Game/State", { cache: "no-store" });
+        if (!res.ok) return;
+
+        const data = await res.json();
+
+        // Reset baseline from server truth
+        startCredits = Number(data.credits);
+        totalPps = Number(data.totalPps);
+        clientStartMs = Date.now();
+
+        // Update per-planet UI details
+        if (Array.isArray(data.planets)) {
+          data.planets.forEach(p => {
+            const id = p.planetId;
+
+            // Level
+            const lvlEl = document.getElementById("lvl-" + id);
+            if (lvlEl) lvlEl.textContent = String(p.mineLevel);
+
+            // PPS
+            const ppsEl = document.querySelector('.pps[data-planet="' + id + '"]');
+            if (ppsEl) ppsEl.textContent = String(p.pps);
+
+            // Hidden costs
+            const c1El = document.querySelector('.cost1[data-planet="' + id + '"]');
+            const c5El = document.querySelector('.cost5[data-planet="' + id + '"]');
+            const c10El = document.querySelector('.cost10[data-planet="' + id + '"]');
+
+            if (c1El) c1El.value = String(p.cost1);
+            if (c5El) c5El.value = String(p.cost5);
+            if (c10El) c10El.value = String(p.cost10);
+
+            // Visible costs
+            const c1Text = document.querySelector('.c1text[data-planet="' + id + '"]');
+            const c5Text = document.querySelector('.c5text[data-planet="' + id + '"]');
+            const c10Text = document.querySelector('.c10text[data-planet="' + id + '"]');
+
+            if (c1Text) c1Text.textContent = String(p.cost1);
+            if (c5Text) c5Text.textContent = String(p.cost5);
+            if (c10Text) c10Text.textContent = String(p.cost10);
+
+            // Buy price (if still locked)
+            const priceEl = document.querySelector('.planetPrice[data-planet="' + id + '"]');
+            if (priceEl) priceEl.textContent = String(p.unlockPrice);
+          });
+        }
+
+        // Re-render immediately
+        renderTick();
+      } catch {
+        // ignore
+      }
+    }
+
+    setTimeout(autoSync, 2000);
+    setInterval(autoSync, 15000);
+  })();
+</script>

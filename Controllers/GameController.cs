@@ -1,20 +1,33 @@
 using GameIdle.Data;
 using GameIdle.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace GameIdle.Controllers
 {
+    [Authorize]
     public class GameController : Controller
     {
         private readonly GameDbContext _db;
+        private readonly UserManager<ApplicationUser> _userManager;
 
-        public GameController(GameDbContext db)
+        public GameController(GameDbContext db, UserManager<ApplicationUser> userManager)
         {
             _db = db;
+            _userManager = userManager;
         }
 
         private const int FirstPlanetId = 1;
+
+        private string GetUserIdOrThrow()
+        {
+            var userId = _userManager.GetUserId(User);
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new InvalidOperationException("User is not authenticated.");
+            return userId;
+        }
 
         private static long UpgradeCostForNextLevel(Planet planet, int currentLevel)
         {
@@ -41,9 +54,11 @@ namespace GameIdle.Controllers
 
         private async Task<PlayerGameState> GetOrCreateStateAsync()
         {
+            var userId = GetUserIdOrThrow();
+
             var state = await _db.PlayerGameStates
                 .Include(p => p.Planets)
-                .FirstOrDefaultAsync();
+                .SingleOrDefaultAsync(s => s.UserId == userId);
 
             var planets = await _db.Planets.OrderBy(p => p.Id).ToListAsync();
 
@@ -56,6 +71,7 @@ namespace GameIdle.Controllers
 
                 state = new PlayerGameState
                 {
+                    UserId = userId,
                     Credits = startCredits,
                     LastTickUtc = DateTime.UtcNow
                 };
@@ -76,13 +92,21 @@ namespace GameIdle.Controllers
                 }
 
                 await _db.SaveChangesAsync();
+
+                // state.Planets ist ggf. noch nicht befüllt (weil wir PlayerPlanetStates direkt hinzufügen)
+                // Für saubere In-Memory Daten neu laden:
+                state = await _db.PlayerGameStates
+                    .Include(p => p.Planets)
+                    .SingleAsync(s => s.UserId == userId);
             }
             else
             {
                 // Falls Seeding erweitert wurde: fehlende PlayerPlanetStates nachziehen
+                var existingPlanetIds = state.Planets.Select(x => x.PlanetId).ToHashSet();
+
                 foreach (var pl in planets)
                 {
-                    if (!state.Planets.Any(x => x.PlanetId == pl.Id))
+                    if (!existingPlanetIds.Contains(pl.Id))
                     {
                         _db.PlayerPlanetStates.Add(new PlayerPlanetState
                         {
@@ -153,8 +177,7 @@ namespace GameIdle.Controllers
                 OfflineSeconds = offlineSeconds,
                 OfflineEarnings = offlineEarnings,
 
-                // ✅ FIX: sonst kommt das Popup nie!
-                // Zeigt Popup sobald du wirklich offline warst (auch wenn Earnings = 0)
+                // Popup sobald offlineSeconds > 0 (auch wenn earnings = 0)
                 ShowOfflinePopup = offlineSeconds > 0,
 
                 Planets = states.Select(s => new PlanetViewModel

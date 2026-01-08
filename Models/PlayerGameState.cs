@@ -1,5 +1,4 @@
-using System;
-using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace GameIdle.Models
 {
@@ -7,10 +6,15 @@ namespace GameIdle.Models
     {
         public int Id { get; set; }
 
-        public long Credits { get; set; } = 0;
+        [Required]
+        public string UserId { get; set; } = default!;
 
+        public ApplicationUser? User { get; set; }
+
+        public long Credits { get; set; }
         public DateTime LastTickUtc { get; set; } = DateTime.UtcNow;
 
-        public List<PlayerPlanetState> Planets { get; set; } = new();
+        // Navigation: deine PlayerPlanetStates (bei dir heißt das "Planets")
+        public ICollection<PlayerPlanetState> Planets { get; set; } = new List<PlayerPlanetState>();
     }
 }

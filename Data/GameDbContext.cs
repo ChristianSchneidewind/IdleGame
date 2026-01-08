@@ -1,9 +1,10 @@
 using GameIdle.Models;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace GameIdle.Data
 {
-    public class GameDbContext : DbContext
+    public class GameDbContext : IdentityDbContext<ApplicationUser>
     {
         public GameDbContext(DbContextOptions<GameDbContext> options) : base(options)
         {
@@ -17,18 +18,29 @@ namespace GameIdle.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // Pro Spieler darf es jeden Planeten nur 1x geben
+            // ✅ 1 Save pro User
+            modelBuilder.Entity<PlayerGameState>()
+                .HasIndex(x => x.UserId)
+                .IsUnique();
+
+            modelBuilder.Entity<PlayerGameState>()
+                .HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // ✅ Pro Spieler darf es jeden Planeten nur 1x geben
             modelBuilder.Entity<PlayerPlanetState>()
                 .HasIndex(x => new { x.PlayerGameStateId, x.PlanetId })
                 .IsUnique();
 
-            // Planeten-Seeding (jeder Planet muss gekauft werden!)
+            // ✅ Planeten-Seeding (jeder Planet muss gekauft werden!)
             modelBuilder.Entity<Planet>().HasData(
                 new Planet
                 {
                     Id = 1,
                     Name = "Earth",
-                    UnlockPriceCredits = 100,   // ERSTER Planet kostet was
+                    UnlockPriceCredits = 100,
                     BaseUpgradeCost = 10,
                     CostMultiplier = 1.35,
                     BaseProductionPerSecond = 1

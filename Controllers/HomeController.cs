@@ -1,24 +1,29 @@
 using System.Diagnostics;
-using Microsoft.AspNetCore.Mvc;
 using GameIdle.Models;
+using Microsoft.AspNetCore.Mvc;
 
-namespace GameIdle.Controllers;
-
-public class HomeController : Controller
+namespace GameIdle.Controllers
 {
-    public IActionResult Index()
+    public class HomeController : Controller
     {
-        return View();
-    }
+        public IActionResult Index()
+        {
+            // ✅ Wenn eingeloggt -> direkt ins Spiel
+            if (User?.Identity?.IsAuthenticated == true)
+                return RedirectToAction("Index", "Game");
 
-    public IActionResult Privacy()
-    {
-        return View();
-    }
+            return View();
+        }
 
-    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
-    public IActionResult Error()
-    {
-        return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+        public IActionResult Privacy()
+        {
+            return View();
+        }
+
+        [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+        public IActionResult Error()
+        {
+            return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+        }
     }
 }

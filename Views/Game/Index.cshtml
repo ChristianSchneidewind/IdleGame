@@ -51,6 +51,9 @@
   }
 </style>
 
+@* Anti-Forgery Token einmal rendern, JS liest ihn *@
+@Html.AntiForgeryToken()
+
 <div style="font-size: 1.2rem; line-height: 1.8;">
   <div>
     <strong>Credits:</strong>
@@ -95,7 +98,7 @@
       const modal = document.getElementById("offlineModal");
       const btn = document.getElementById("closeOfflineModal");
 
-      // Format seconds to hh:mm:ss
+      // seconds -> hh:mm:ss
       const seconds = Number("@Model.OfflineSeconds");
       const h = Math.floor(seconds / 3600);
       const m = Math.floor((seconds % 3600) / 60);
@@ -125,11 +128,12 @@
           <span class="planetPrice" data-planet="@p.PlanetId">@p.UnlockPriceCredits</span>
         </span>
 
-        <form asp-action="BuyPlanet" method="post" style="display:inline;">
-          @Html.AntiForgeryToken()
-          <input type="hidden" name="planetId" value="@p.PlanetId" />
-          <button id="buy-@p.PlanetId" class="btn" type="submit">Buy</button>
-        </form>
+        <button id="buy-@p.PlanetId"
+                type="button"
+                class="btn"
+                onclick="buyPlanet(@p.PlanetId)">
+          Buy
+        </button>
       }
       else
       {
@@ -155,26 +159,9 @@
       </div>
 
       <div style="margin-top: 10px;">
-        <form asp-action="UpgradeMine" method="post" style="display:inline;">
-          @Html.AntiForgeryToken()
-          <input type="hidden" name="planetId" value="@p.PlanetId" />
-          <input type="hidden" name="count" value="1" />
-          <button id="u1-@p.PlanetId" class="btn" type="submit">Upgrade x1</button>
-        </form>
-
-        <form asp-action="UpgradeMine" method="post" style="display:inline;">
-          @Html.AntiForgeryToken()
-          <input type="hidden" name="planetId" value="@p.PlanetId" />
-          <input type="hidden" name="count" value="5" />
-          <button id="u5-@p.PlanetId" class="btn" type="submit">Upgrade x5</button>
-        </form>
-
-        <form asp-action="UpgradeMine" method="post" style="display:inline;">
-          @Html.AntiForgeryToken()
-          <input type="hidden" name="planetId" value="@p.PlanetId" />
-          <input type="hidden" name="count" value="10" />
-          <button id="u10-@p.PlanetId" class="btn" type="submit">Upgrade x10</button>
-        </form>
+        <button id="u1-@p.PlanetId" type="button" class="btn" onclick="upgrade(@p.PlanetId, 1)">Upgrade x1</button>
+        <button id="u5-@p.PlanetId" type="button" class="btn" onclick="upgrade(@p.PlanetId, 5)">Upgrade x5</button>
+        <button id="u10-@p.PlanetId" type="button" class="btn" onclick="upgrade(@p.PlanetId, 10)">Upgrade x10</button>
       </div>
 
       <!-- Hidden inputs for JS (raw numbers, do NOT format!) -->
@@ -187,6 +174,14 @@
 
 <script>
   (function () {
+    // --- Anti-Forgery Token for fetch ---
+    const tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
+    const antiforgeryToken = tokenInput ? tokenInput.value : null;
+
+    function antiForgeryHeaders() {
+      const headers = { "Content-Type": "application/x-www-form-urlencoded" };
+      if (antiforgeryToken) headers["RequestVerificationToken"] = antiforgeryToken;
+      return headers;
 
     function formatNumber(n) {
       n = Number(n) || 0;
@@ -302,11 +297,7 @@
       updateButtonsWithCredits(currentCredits);
     }
 
-    // Local tick every second
-    renderTick();
-    setInterval(renderTick, 1000);
-
-    // --- AutoSync every 15 seconds ---
+    // --- AutoSync ---
     async function autoSync() {
       try {
         const res = await fetch("/Game/State", { cache: "no-store" });
@@ -359,13 +350,42 @@
           });
         }
 
-        // Re-render immediately
         renderTick();
       } catch {
         // ignore
       }
     }
 
+    // Expose actions globally
+    window.buyPlanet = async function (planetId) {
+      const body = new URLSearchParams({ planetId: String(planetId) }).toString();
+
+      await fetch("/Game/BuyPlanet", {
+        method: "POST",
+        headers: antiForgeryHeaders(),
+        body
+      });
+
+      await autoSync();
+    };
+
+    window.upgrade = async function (planetId, count) {
+      const body = new URLSearchParams({ planetId: String(planetId), count: String(count) }).toString();
+
+      await fetch("/Game/UpgradeMine", {
+        method: "POST",
+        headers: antiForgeryHeaders(),
+        body
+      });
+
+      await autoSync();
+    };
+
+    // Local tick every second
+    renderTick();
+    setInterval(renderTick, 1000);
+
+    // AutoSync every 15 seconds
     setTimeout(autoSync, 2000);
     setInterval(autoSync, 15000);
   })();

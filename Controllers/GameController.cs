@@ -1,9 +1,9 @@
 using GameIdle.Data;
 using GameIdle.Models;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace GameIdle.Controllers
 {
@@ -11,23 +11,13 @@ namespace GameIdle.Controllers
     public class GameController : Controller
     {
         private readonly GameDbContext _db;
-        private readonly UserManager<ApplicationUser> _userManager;
 
-        public GameController(GameDbContext db, UserManager<ApplicationUser> userManager)
+        public GameController(GameDbContext db)
         {
             _db = db;
-            _userManager = userManager;
         }
 
         private const int FirstPlanetId = 1;
-
-        private string GetUserIdOrThrow()
-        {
-            var userId = _userManager.GetUserId(User);
-            if (string.IsNullOrWhiteSpace(userId))
-                throw new InvalidOperationException("User is not authenticated.");
-            return userId;
-        }
 
         private static long UpgradeCostForNextLevel(Planet planet, int currentLevel)
         {
@@ -52,13 +42,19 @@ namespace GameIdle.Controllers
             return planet.BaseProductionPerSecond * mineLevel;
         }
 
+        private string GetUserId()
+        {
+            return User.FindFirstValue(ClaimTypes.NameIdentifier)
+                   ?? throw new InvalidOperationException("User is not authenticated (no NameIdentifier).");
+        }
+
         private async Task<PlayerGameState> GetOrCreateStateAsync()
         {
-            var userId = GetUserIdOrThrow();
+            var userId = GetUserId();
 
             var state = await _db.PlayerGameStates
                 .Include(p => p.Planets)
-                .SingleOrDefaultAsync(s => s.UserId == userId);
+                .FirstOrDefaultAsync(s => s.UserId == userId);
 
             var planets = await _db.Planets.OrderBy(p => p.Id).ToListAsync();
 
@@ -92,21 +88,13 @@ namespace GameIdle.Controllers
                 }
 
                 await _db.SaveChangesAsync();
-
-                // state.Planets ist ggf. noch nicht befüllt (weil wir PlayerPlanetStates direkt hinzufügen)
-                // Für saubere In-Memory Daten neu laden:
-                state = await _db.PlayerGameStates
-                    .Include(p => p.Planets)
-                    .SingleAsync(s => s.UserId == userId);
             }
             else
             {
                 // Falls Seeding erweitert wurde: fehlende PlayerPlanetStates nachziehen
-                var existingPlanetIds = state.Planets.Select(x => x.PlanetId).ToHashSet();
-
                 foreach (var pl in planets)
                 {
-                    if (!existingPlanetIds.Contains(pl.Id))
+                    if (!state.Planets.Any(x => x.PlanetId == pl.Id))
                     {
                         _db.PlayerPlanetStates.Add(new PlayerPlanetState
                         {
@@ -177,7 +165,7 @@ namespace GameIdle.Controllers
                 OfflineSeconds = offlineSeconds,
                 OfflineEarnings = offlineEarnings,
 
-                // Popup sobald offlineSeconds > 0 (auch wenn earnings = 0)
+                // ✅ DAS war der Bug: Ohne diese Zeile wird das Popup NIE gerendert.
                 ShowOfflinePopup = offlineSeconds > 0,
 
                 Planets = states.Select(s => new PlanetViewModel

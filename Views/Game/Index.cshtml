@@ -51,6 +51,9 @@
   }
 </style>
 
+@* Anti-Forgery Token einmal rendern, JS liest ihn *@
+@Html.AntiForgeryToken()
+
 <div style="font-size: 1.2rem; line-height: 1.8;">
   <div>
     <strong>Credits:</strong>
@@ -95,7 +98,7 @@
       const modal = document.getElementById("offlineModal");
       const btn = document.getElementById("closeOfflineModal");
 
-      // Format seconds to hh:mm:ss
+      // seconds -> hh:mm:ss
       const seconds = Number("@Model.OfflineSeconds");
       const h = Math.floor(seconds / 3600);
       const m = Math.floor((seconds % 3600) / 60);
@@ -125,11 +128,12 @@
           <span class="planetPrice" data-planet="@p.PlanetId">@p.UnlockPriceCredits</span>
         </span>
 
-        <form asp-action="BuyPlanet" method="post" style="display:inline;">
-          @Html.AntiForgeryToken()
-          <input type="hidden" name="planetId" value="@p.PlanetId" />
-          <button id="buy-@p.PlanetId" class="btn" type="submit">Buy</button>
-        </form>
+        <button id="buy-@p.PlanetId"
+                type="button"
+                class="btn"
+                onclick="buyPlanet(@p.PlanetId)">
+          Buy
+        </button>
       }
       else
       {
@@ -155,29 +159,12 @@
       </div>
 
       <div style="margin-top: 10px;">
-        <form asp-action="UpgradeMine" method="post" style="display:inline;">
-          @Html.AntiForgeryToken()
-          <input type="hidden" name="planetId" value="@p.PlanetId" />
-          <input type="hidden" name="count" value="1" />
-          <button id="u1-@p.PlanetId" class="btn" type="submit">Upgrade x1</button>
-        </form>
-
-        <form asp-action="UpgradeMine" method="post" style="display:inline;">
-          @Html.AntiForgeryToken()
-          <input type="hidden" name="planetId" value="@p.PlanetId" />
-          <input type="hidden" name="count" value="5" />
-          <button id="u5-@p.PlanetId" class="btn" type="submit">Upgrade x5</button>
-        </form>
-
-        <form asp-action="UpgradeMine" method="post" style="display:inline;">
-          @Html.AntiForgeryToken()
-          <input type="hidden" name="planetId" value="@p.PlanetId" />
-          <input type="hidden" name="count" value="10" />
-          <button id="u10-@p.PlanetId" class="btn" type="submit">Upgrade x10</button>
-        </form>
+        <button id="u1-@p.PlanetId" type="button" class="btn" onclick="upgrade(@p.PlanetId, 1)">Upgrade x1</button>
+        <button id="u5-@p.PlanetId" type="button" class="btn" onclick="upgrade(@p.PlanetId, 5)">Upgrade x5</button>
+        <button id="u10-@p.PlanetId" type="button" class="btn" onclick="upgrade(@p.PlanetId, 10)">Upgrade x10</button>
       </div>
 
-      <!-- Hidden inputs for JS (raw numbers, do NOT format!) -->
+      <!-- Hidden inputs for JS -->
       <input type="hidden" class="cost1" data-planet="@p.PlanetId" value="@p.UpgradeCost1" />
       <input type="hidden" class="cost5" data-planet="@p.PlanetId" value="@p.UpgradeCost5" />
       <input type="hidden" class="cost10" data-planet="@p.PlanetId" value="@p.UpgradeCost10" />
@@ -187,31 +174,14 @@
 
 <script>
   (function () {
+    // --- Anti-Forgery Token for fetch ---
+    const tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
+    const antiforgeryToken = tokenInput ? tokenInput.value : null;
 
-    function formatNumber(n) {
-      n = Number(n) || 0;
-
-      const abs = Math.abs(n);
-      const units = [
-        { v: 1e15, s: "Q" },
-        { v: 1e12, s: "T" },
-        { v: 1e9,  s: "B" },
-        { v: 1e6,  s: "M" },
-        { v: 1e3,  s: "K" }
-      ];
-
-      for (const u of units) {
-        if (abs >= u.v) {
-          const val = n / u.v;
-          const decimals = Math.abs(val) < 10 ? 2 : (Math.abs(val) < 100 ? 1 : 0);
-          return val
-            .toFixed(decimals)
-            .replace(/\.0+$/, "")
-            .replace(/(\.\d*[1-9])0+$/, "$1") + u.s;
-        }
-      }
-
-      return Math.round(n).toString();
+    function antiForgeryHeaders() {
+      const headers = { "Content-Type": "application/x-www-form-urlencoded" };
+      if (antiforgeryToken) headers["RequestVerificationToken"] = antiforgeryToken;
+      return headers;
     }
 
     // Baseline (will be corrected by AutoSync)
@@ -221,21 +191,6 @@
 
     const creditsEl = document.getElementById("credits");
     const totalPpsEl = document.getElementById("totalPps");
-
-    // Format initial server-rendered values
-    if (creditsEl) creditsEl.textContent = formatNumber(Number(creditsEl.textContent));
-    if (totalPpsEl) totalPpsEl.textContent = formatNumber(Number(totalPpsEl.textContent));
-
-    // Format offline earnings once (if popup exists)
-    const offlineEarnEl = document.getElementById("offlineEarn");
-    if (offlineEarnEl) offlineEarnEl.textContent = formatNumber(Number(offlineEarnEl.textContent));
-
-    // Format all initially rendered planet values (server-rendered)
-    document.querySelectorAll(".planetPrice").forEach(el => el.textContent = formatNumber(Number(el.textContent)));
-    document.querySelectorAll(".pps").forEach(el => el.textContent = formatNumber(Number(el.textContent)));
-    document.querySelectorAll(".c1text").forEach(el => el.textContent = formatNumber(Number(el.textContent)));
-    document.querySelectorAll(".c5text").forEach(el => el.textContent = formatNumber(Number(el.textContent)));
-    document.querySelectorAll(".c10text").forEach(el => el.textContent = formatNumber(Number(el.textContent)));
 
     function setBtn(btn, canBuy) {
       if (!btn) return;
@@ -250,31 +205,15 @@
     }
 
     function updateButtonsWithCredits(currentCredits) {
-      // Buy buttons (NOTE: priceEl.textContent is formatted, so we read from raw attribute if possible)
+      // Buy buttons
       document.querySelectorAll(".planetPrice").forEach(priceEl => {
         const planetId = priceEl.dataset.planet;
-
-        // Prefer raw unlock price from data attribute if available, else parse digits from formatted
-        let price = Number(priceEl.getAttribute("data-raw"));
-        if (!Number.isFinite(price) || price <= 0) {
-          // fallback: try to remove suffix (K/M/B/T/Q) - but better is data-raw (added in autosync)
-          const txt = priceEl.textContent;
-          const match = txt.match(/^([\d.]+)([KMBTQ])?$/);
-          if (match) {
-            const base = Number(match[1]);
-            const unit = match[2];
-            const mult = unit === "K" ? 1e3 : unit === "M" ? 1e6 : unit === "B" ? 1e9 : unit === "T" ? 1e12 : unit === "Q" ? 1e15 : 1;
-            price = base * mult;
-          } else {
-            price = 0;
-          }
-        }
-
+        const price = Number(priceEl.textContent);
         const buyBtn = document.getElementById("buy-" + planetId);
         if (buyBtn) setBtn(buyBtn, currentCredits >= price);
       });
 
-      // Upgrade buttons use raw hidden inputs -> safe
+      // Upgrade buttons
       document.querySelectorAll(".cost1").forEach(input => {
         const planetId = input.dataset.planet;
 
@@ -296,17 +235,12 @@
 
     function renderTick() {
       const currentCredits = getCurrentCredits();
-      creditsEl.textContent = formatNumber(currentCredits);
-      totalPpsEl.textContent = formatNumber(totalPps);
-
+      creditsEl.textContent = currentCredits.toString();
+      totalPpsEl.textContent = totalPps.toString();
       updateButtonsWithCredits(currentCredits);
     }
 
-    // Local tick every second
-    renderTick();
-    setInterval(renderTick, 1000);
-
-    // --- AutoSync every 15 seconds ---
+    // --- AutoSync ---
     async function autoSync() {
       try {
         const res = await fetch("/Game/State", { cache: "no-store" });
@@ -328,11 +262,11 @@
             const lvlEl = document.getElementById("lvl-" + id);
             if (lvlEl) lvlEl.textContent = String(p.mineLevel);
 
-            // PPS (visible formatted)
+            // PPS
             const ppsEl = document.querySelector('.pps[data-planet="' + id + '"]');
-            if (ppsEl) ppsEl.textContent = formatNumber(p.pps);
+            if (ppsEl) ppsEl.textContent = String(p.pps);
 
-            // Hidden costs (raw)
+            // Hidden costs
             const c1El = document.querySelector('.cost1[data-planet="' + id + '"]');
             const c5El = document.querySelector('.cost5[data-planet="' + id + '"]');
             const c10El = document.querySelector('.cost10[data-planet="' + id + '"]');
@@ -341,31 +275,57 @@
             if (c5El) c5El.value = String(p.cost5);
             if (c10El) c10El.value = String(p.cost10);
 
-            // Visible costs (formatted)
+            // Visible costs
             const c1Text = document.querySelector('.c1text[data-planet="' + id + '"]');
             const c5Text = document.querySelector('.c5text[data-planet="' + id + '"]');
             const c10Text = document.querySelector('.c10text[data-planet="' + id + '"]');
 
-            if (c1Text) c1Text.textContent = formatNumber(p.cost1);
-            if (c5Text) c5Text.textContent = formatNumber(p.cost5);
-            if (c10Text) c10Text.textContent = formatNumber(p.cost10);
+            if (c1Text) c1Text.textContent = String(p.cost1);
+            if (c5Text) c5Text.textContent = String(p.cost5);
+            if (c10Text) c10Text.textContent = String(p.cost10);
 
-            // Buy price (if still locked) - store raw in attribute + show formatted
+            // Buy price (if still locked)
             const priceEl = document.querySelector('.planetPrice[data-planet="' + id + '"]');
-            if (priceEl) {
-              priceEl.setAttribute("data-raw", String(p.unlockPrice));
-              priceEl.textContent = formatNumber(p.unlockPrice);
-            }
+            if (priceEl) priceEl.textContent = String(p.unlockPrice);
           });
         }
 
-        // Re-render immediately
         renderTick();
       } catch {
         // ignore
       }
     }
 
+    // Expose actions globally
+    window.buyPlanet = async function (planetId) {
+      const body = new URLSearchParams({ planetId: String(planetId) }).toString();
+
+      await fetch("/Game/BuyPlanet", {
+        method: "POST",
+        headers: antiForgeryHeaders(),
+        body
+      });
+
+      await autoSync();
+    };
+
+    window.upgrade = async function (planetId, count) {
+      const body = new URLSearchParams({ planetId: String(planetId), count: String(count) }).toString();
+
+      await fetch("/Game/UpgradeMine", {
+        method: "POST",
+        headers: antiForgeryHeaders(),
+        body
+      });
+
+      await autoSync();
+    };
+
+    // Local tick every second
+    renderTick();
+    setInterval(renderTick, 1000);
+
+    // AutoSync every 15 seconds
     setTimeout(autoSync, 2000);
     setInterval(autoSync, 15000);
   })();

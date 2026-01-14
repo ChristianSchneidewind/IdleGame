@@ -164,7 +164,7 @@
         <button id="u10-@p.PlanetId" type="button" class="btn" onclick="upgrade(@p.PlanetId, 10)">Upgrade x10</button>
       </div>
 
-      <!-- Hidden inputs for JS -->
+      <!-- Hidden inputs for JS (raw numbers, do NOT format!) -->
       <input type="hidden" class="cost1" data-planet="@p.PlanetId" value="@p.UpgradeCost1" />
       <input type="hidden" class="cost5" data-planet="@p.PlanetId" value="@p.UpgradeCost5" />
       <input type="hidden" class="cost10" data-planet="@p.PlanetId" value="@p.UpgradeCost10" />
@@ -182,6 +182,31 @@
       const headers = { "Content-Type": "application/x-www-form-urlencoded" };
       if (antiforgeryToken) headers["RequestVerificationToken"] = antiforgeryToken;
       return headers;
+
+    function formatNumber(n) {
+      n = Number(n) || 0;
+
+      const abs = Math.abs(n);
+      const units = [
+        { v: 1e15, s: "Q" },
+        { v: 1e12, s: "T" },
+        { v: 1e9,  s: "B" },
+        { v: 1e6,  s: "M" },
+        { v: 1e3,  s: "K" }
+      ];
+
+      for (const u of units) {
+        if (abs >= u.v) {
+          const val = n / u.v;
+          const decimals = Math.abs(val) < 10 ? 2 : (Math.abs(val) < 100 ? 1 : 0);
+          return val
+            .toFixed(decimals)
+            .replace(/\.0+$/, "")
+            .replace(/(\.\d*[1-9])0+$/, "$1") + u.s;
+        }
+      }
+
+      return Math.round(n).toString();
     }
 
     // Baseline (will be corrected by AutoSync)
@@ -191,6 +216,21 @@
 
     const creditsEl = document.getElementById("credits");
     const totalPpsEl = document.getElementById("totalPps");
+
+    // Format initial server-rendered values
+    if (creditsEl) creditsEl.textContent = formatNumber(Number(creditsEl.textContent));
+    if (totalPpsEl) totalPpsEl.textContent = formatNumber(Number(totalPpsEl.textContent));
+
+    // Format offline earnings once (if popup exists)
+    const offlineEarnEl = document.getElementById("offlineEarn");
+    if (offlineEarnEl) offlineEarnEl.textContent = formatNumber(Number(offlineEarnEl.textContent));
+
+    // Format all initially rendered planet values (server-rendered)
+    document.querySelectorAll(".planetPrice").forEach(el => el.textContent = formatNumber(Number(el.textContent)));
+    document.querySelectorAll(".pps").forEach(el => el.textContent = formatNumber(Number(el.textContent)));
+    document.querySelectorAll(".c1text").forEach(el => el.textContent = formatNumber(Number(el.textContent)));
+    document.querySelectorAll(".c5text").forEach(el => el.textContent = formatNumber(Number(el.textContent)));
+    document.querySelectorAll(".c10text").forEach(el => el.textContent = formatNumber(Number(el.textContent)));
 
     function setBtn(btn, canBuy) {
       if (!btn) return;
@@ -205,15 +245,31 @@
     }
 
     function updateButtonsWithCredits(currentCredits) {
-      // Buy buttons
+      // Buy buttons (NOTE: priceEl.textContent is formatted, so we read from raw attribute if possible)
       document.querySelectorAll(".planetPrice").forEach(priceEl => {
         const planetId = priceEl.dataset.planet;
-        const price = Number(priceEl.textContent);
+
+        // Prefer raw unlock price from data attribute if available, else parse digits from formatted
+        let price = Number(priceEl.getAttribute("data-raw"));
+        if (!Number.isFinite(price) || price <= 0) {
+          // fallback: try to remove suffix (K/M/B/T/Q) - but better is data-raw (added in autosync)
+          const txt = priceEl.textContent;
+          const match = txt.match(/^([\d.]+)([KMBTQ])?$/);
+          if (match) {
+            const base = Number(match[1]);
+            const unit = match[2];
+            const mult = unit === "K" ? 1e3 : unit === "M" ? 1e6 : unit === "B" ? 1e9 : unit === "T" ? 1e12 : unit === "Q" ? 1e15 : 1;
+            price = base * mult;
+          } else {
+            price = 0;
+          }
+        }
+
         const buyBtn = document.getElementById("buy-" + planetId);
         if (buyBtn) setBtn(buyBtn, currentCredits >= price);
       });
 
-      // Upgrade buttons
+      // Upgrade buttons use raw hidden inputs -> safe
       document.querySelectorAll(".cost1").forEach(input => {
         const planetId = input.dataset.planet;
 
@@ -235,8 +291,9 @@
 
     function renderTick() {
       const currentCredits = getCurrentCredits();
-      creditsEl.textContent = currentCredits.toString();
-      totalPpsEl.textContent = totalPps.toString();
+      creditsEl.textContent = formatNumber(currentCredits);
+      totalPpsEl.textContent = formatNumber(totalPps);
+
       updateButtonsWithCredits(currentCredits);
     }
 
@@ -262,11 +319,11 @@
             const lvlEl = document.getElementById("lvl-" + id);
             if (lvlEl) lvlEl.textContent = String(p.mineLevel);
 
-            // PPS
+            // PPS (visible formatted)
             const ppsEl = document.querySelector('.pps[data-planet="' + id + '"]');
-            if (ppsEl) ppsEl.textContent = String(p.pps);
+            if (ppsEl) ppsEl.textContent = formatNumber(p.pps);
 
-            // Hidden costs
+            // Hidden costs (raw)
             const c1El = document.querySelector('.cost1[data-planet="' + id + '"]');
             const c5El = document.querySelector('.cost5[data-planet="' + id + '"]');
             const c10El = document.querySelector('.cost10[data-planet="' + id + '"]');
@@ -275,18 +332,21 @@
             if (c5El) c5El.value = String(p.cost5);
             if (c10El) c10El.value = String(p.cost10);
 
-            // Visible costs
+            // Visible costs (formatted)
             const c1Text = document.querySelector('.c1text[data-planet="' + id + '"]');
             const c5Text = document.querySelector('.c5text[data-planet="' + id + '"]');
             const c10Text = document.querySelector('.c10text[data-planet="' + id + '"]');
 
-            if (c1Text) c1Text.textContent = String(p.cost1);
-            if (c5Text) c5Text.textContent = String(p.cost5);
-            if (c10Text) c10Text.textContent = String(p.cost10);
+            if (c1Text) c1Text.textContent = formatNumber(p.cost1);
+            if (c5Text) c5Text.textContent = formatNumber(p.cost5);
+            if (c10Text) c10Text.textContent = formatNumber(p.cost10);
 
-            // Buy price (if still locked)
+            // Buy price (if still locked) - store raw in attribute + show formatted
             const priceEl = document.querySelector('.planetPrice[data-planet="' + id + '"]');
-            if (priceEl) priceEl.textContent = String(p.unlockPrice);
+            if (priceEl) {
+              priceEl.setAttribute("data-raw", String(p.unlockPrice));
+              priceEl.textContent = formatNumber(p.unlockPrice);
+            }
           });
         }
 

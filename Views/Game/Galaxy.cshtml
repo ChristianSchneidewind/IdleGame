@@ -1,0 +1,107 @@
+@model GameIdle.Models.GameViewModel
+@{
+    ViewData["Title"] = "Galaxy";
+}
+
+<link rel="stylesheet" href="~/css/galaxy.css" />
+
+<!-- HUD links oben -->
+<div class="hud">
+  <div><strong>Credits:</strong> <span id="credits">@Model.Credits</span></div>
+  <div><strong>Total PPS:</strong> <span id="totalPps">@Model.TotalProductionPerSecond</span></div>
+</div>
+
+<!-- Galaxy Map -->
+<div class="galaxy" id="galaxy">
+  <div class="core" title="Core"></div>
+
+  @* Planeten (erstmal im Kreis angeordnet, ohne DB-Positionen) *@
+  @{
+    var count = Model.Planets.Count;
+    var radius = 260; // Pixel
+  }
+
+  @for (int i = 0; i < count; i++)
+  {
+    var p = Model.Planets[i];
+    var angle = (Math.PI * 2 * i) / Math.Max(1, count);
+    var x = (int)(Math.Cos(angle) * radius);
+    var y = (int)(Math.Sin(angle) * radius);
+
+    <button type="button"
+            class="planet @(p.IsUnlocked ? "unlocked" : "locked")"
+            style="--x:@x; --y:@y;"
+            data-planet-id="@p.PlanetId"
+            data-name="@p.Name"
+            data-unlocked="@p.IsUnlocked"
+            data-level="@p.MineLevel"
+            data-pps="@p.ProductionPerSecond"
+            data-cost1="@p.UpgradeCost1"
+            data-cost5="@p.UpgradeCost5"
+            data-cost10="@p.UpgradeCost10"
+            data-unlockprice="@p.UnlockPriceCredits"
+            title="@p.Name">
+      <span class="planet-dot"></span>
+      <span class="planet-label">@p.Name</span>
+    </button>
+  }
+</div>
+
+<!-- Overlay (Upgrade Panel) -->
+<div id="planetOverlay" class="overlay hidden">
+  <div class="overlay-card">
+    <div class="overlay-header">
+      <h3 id="ovName" style="margin:0;">Planet</h3>
+      <button type="button" id="ovClose" class="xbtn">✕</button>
+    </div>
+
+    <div class="overlay-stats">
+      <div>Level: <strong id="ovLevel">0</strong></div>
+      <div>PPS: <strong id="ovPps">0</strong></div>
+    </div>
+
+    <div id="ovLockedRow" class="hidden" style="margin-top:10px;">
+      <div>Unlock Preis: <strong id="ovUnlockPrice">0</strong></div>
+      <form asp-action="BuyPlanet" method="post" style="margin-top:10px;">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="planetId" id="ovBuyPlanetId" />
+        <button class="btn" type="submit">Kaufen</button>
+      </form>
+    </div>
+
+    <div id="ovUpgradeRow" style="margin-top:10px;">
+      <div class="muted">
+        Upgrade Kosten:
+        x1=<span id="ovC1">0</span>,
+        x5=<span id="ovC5">0</span>,
+        x10=<span id="ovC10">0</span>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <form asp-action="UpgradeMine" method="post">
+          @Html.AntiForgeryToken()
+          <input type="hidden" name="planetId" id="ovUPlanetId1" />
+          <input type="hidden" name="count" value="1" />
+          <button class="btn" type="submit" id="ovU1">Upgrade x1</button>
+        </form>
+
+        <form asp-action="UpgradeMine" method="post">
+          @Html.AntiForgeryToken()
+          <input type="hidden" name="planetId" id="ovUPlanetId5" />
+          <input type="hidden" name="count" value="5" />
+          <button class="btn" type="submit" id="ovU5">Upgrade x5</button>
+        </form>
+
+        <form asp-action="UpgradeMine" method="post">
+          @Html.AntiForgeryToken()
+          <input type="hidden" name="planetId" id="ovUPlanetId10" />
+          <input type="hidden" name="count" value="10" />
+          <button class="btn" type="submit" id="ovU10">Upgrade x10</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="~/js/galaxy.js"></script>
+
